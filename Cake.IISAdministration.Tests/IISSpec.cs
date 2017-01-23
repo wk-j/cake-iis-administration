@@ -7,7 +7,7 @@ namespace Cake.IISAdministration.Tests
 {
     public class IISSpec
     {
-        IISManage iis = new IISManage(new IISManageOptions
+        IISManager iis = new IISManager(new ManagerOptions
         {
             UserName = "Administrator",
             Password = Environment.GetEnvironmentVariable("iis"),

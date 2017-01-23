@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace Cake.IISAdministration
 {
-    public class Website
+    public class Site
     {
         public string Name { set; get; }
         public string Id { set; get; }
@@ -25,6 +25,27 @@ namespace Cake.IISAdministration
         public string Password { set; get; }
     }
 
+    public class NewSite
+    {
+        public string Name { set; get; } = "NewSite";
+        public string PhysicalPath { set; get; } = "D:\\IISApplication\\NewSite";
+        public int Port { set; get; } = 9010;
+    }
+
+    public class Result<T>
+    {
+        public bool Success { set; get; }
+        public string Message { set; get; }
+        public T Data { set; get; }
+    }
+
+    public class Results<T>
+    {
+        public bool Success { set; get; }
+        public string Message { set; get; }
+        public IEnumerable<T> Data { set; get; }
+    }
+
 
     public class IISManage
     {
@@ -33,18 +54,15 @@ namespace Cake.IISAdministration
         public IISManage(IISManageOptions option)
         {
             _option = option;
+            ServicePointManager.ServerCertificateValidationCallback += delegate { return true; };
         }
 
-        public IEnumerable<Website> GetWebsites()
+        private HttpClient CreateClient(IISManageOptions option)
         {
-            ServicePointManager.ServerCertificateValidationCallback += delegate { return true; };
-
-            var url = _option.Url;
-            var userName = _option.UserName;
-            var password = _option.Password;
-            var token = _option.Token;
-
-            var api = $"{url}/api/webserver/websites";
+            var url = option.Url;
+            var userName = option.UserName;
+            var password = option.Password;
+            var token = option.Token;
 
 
             var httpClientHandler = new HttpClientHandler()
@@ -55,16 +73,77 @@ namespace Cake.IISAdministration
             var apiClient = new HttpClient(httpClientHandler);
             apiClient.DefaultRequestHeaders.Add("Access-Token", $"Bearer {token}");
 
+            return apiClient;
+        }
 
-            var res = apiClient.GetAsync(api).Result;
-            if (res.StatusCode != HttpStatusCode.OK)
+        public Result<Site> CreateSite(NewSite site)
+        {
+            var apiClient = CreateClient(_option);
+            var newSite = new
             {
-                return new List<Website>();
+                name = site.Name,
+                physical_path = site.PhysicalPath,
+                bindings = new[] {
+                    new {
+                        protocol = "http",
+                        port = site.Port,
+                        is_https = false,
+                        ip_address = "*"
+                    }
+                }
+            };
+
+            var api = $"{_option.Url}/api/webserver/websites";
+            var json = JsonConvert.SerializeObject(newSite);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var res = apiClient.PostAsync(api, content).Result;
+            var resultString = res.Content.ReadAsStringAsync().Result;
+            if (res.StatusCode != HttpStatusCode.Created)
+            {
+                return new Result<Site>
+                {
+                    Success = false,
+                    Message = resultString
+                };
             }
 
-            var sites = JObject.Parse(res.Content.ReadAsStringAsync().Result).GetValue("websites");
-            var rs = sites.ToObject<Website[]>();
-            return rs;
+            var info = JObject.Parse(resultString);
+            var obj = info.ToObject<Site>();
+
+            return new Result<Site>
+            {
+                Success = true,
+                Data = obj
+            };
+        }
+
+
+        public Results<Site> GetWebsites()
+        {
+            var api = $"{_option.Url}/api/webserver/websites";
+
+            var apiClient = CreateClient(_option);
+
+            var res = apiClient.GetAsync(api).Result;
+            var resultString = res.Content.ReadAsStringAsync().Result;
+
+            if (res.StatusCode != HttpStatusCode.OK)
+            {
+                return new Results<Site>
+                {
+                    Success = false,
+                    Message = resultString
+                };
+            }
+
+            var sites = JObject.Parse(resultString).GetValue("websites");
+            var rs = sites.ToObject<Site[]>();
+
+            return new Results<Site>
+            {
+                Success = true,
+                Data = rs
+            };
         }
     }
 }
